@@ -1,11 +1,13 @@
 package com.oney.WebRTCModule;
 
+import android.app.Activity;
 import android.support.annotation.Nullable;
 import android.util.Log;
 import android.util.SparseArray;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
+import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
@@ -960,5 +962,23 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         } else {
             pco.dataChannelSend(dataChannelId, data, type);
         }
+    }
+
+    @ReactMethod
+    public void captureFrame( String streamId, Promise p ) {
+        Activity activity = getReactApplicationContext().getCurrentActivity();
+        if( activity == null ) {
+            p.reject( "Activity is null" );
+            return;
+        }
+        MediaStream mediaStream = localStreams.get(streamId);
+        if( mediaStream == null ) {
+            p.reject( "StreamId is invalid" );
+            return;
+        }
+        final StringBuilder result = new StringBuilder();
+        EasyrtcSingleFrameCapturer.toDataUrl( activity, mediaStream, 80, result, () -> {
+            p.resolve( result );
+        } );
     }
 }
