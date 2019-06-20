@@ -3,6 +3,8 @@ package com.oney.WebRTCModule;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import android.app.Activity;
+import android.support.annotation.Nullable;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -1009,6 +1011,24 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         final StringBuilder result = new StringBuilder();
         EasyrtcSingleFrameCapturer.toDataUrl( activity, mediaStream, 80, result, () -> {
             p.resolve( result.toString() );
+        } );
+    }
+
+    @ReactMethod
+    public void captureFrame( String streamId, Promise p ) {
+        Activity activity = getReactApplicationContext().getCurrentActivity();
+        if( activity == null ) {
+            p.reject( "Activity is null" );
+            return;
+        }
+        MediaStream mediaStream = localStreams.get(streamId);
+        if( mediaStream == null ) {
+            p.reject( "StreamId is invalid" );
+            return;
+        }
+        final StringBuilder result = new StringBuilder();
+        EasyrtcSingleFrameCapturer.toDataUrl( activity, mediaStream, 80, result, () -> {
+            p.resolve( result );
         } );
     }
 }
