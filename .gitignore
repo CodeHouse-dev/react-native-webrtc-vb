@@ -13,4 +13,4 @@ examples/GumTestApp_macOS/package-lock.json
 *.tgz
 lib/
 src/*.js
-
+.gradle
