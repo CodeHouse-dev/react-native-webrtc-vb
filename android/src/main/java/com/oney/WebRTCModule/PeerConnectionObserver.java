@@ -216,13 +216,12 @@ class PeerConnectionObserver implements PeerConnection.Observer {
                     new StatsObserver() {
                         @Override
                         public void onComplete(StatsReport[] reports) {
-                            cb.invoke(true, statsToJSON(reports));
+                            cb.invoke(statsToJSON(reports));
                         }
                     },
                     track);
         } else {
             Log.e(TAG, "peerConnectionGetStats() MediaStreamTrack not found for id: " + trackId);
-            cb.invoke(false, "Track not found");
         }
     }
 

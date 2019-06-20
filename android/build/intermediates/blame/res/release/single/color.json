@@ -1,0 +1,38 @@
+[
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/switch_thumb_material_dark.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/switch_thumb_material_dark.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_secondary_text_material_light.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_secondary_text_material_light.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_primary_text_material_dark.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_primary_text_material_dark.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/switch_thumb_material_light.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/switch_thumb_material_light.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_secondary_text_material_dark.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_secondary_text_material_dark.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_primary_text_material_light.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_primary_text_material_light.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_primary_text_disable_only_material_light.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_primary_text_disable_only_material_light.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_search_url_text.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_search_url_text.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color/abc_primary_text_disable_only_material_dark.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color/abc_primary_text_disable_only_material_dark.xml"
+    }
+]

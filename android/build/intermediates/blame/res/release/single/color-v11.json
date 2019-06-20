@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color-v11/abc_background_cache_hint_selector_material_light.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color-v11/abc_background_cache_hint_selector_material_light.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/color-v11/abc_background_cache_hint_selector_material_dark.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/color-v11/abc_background_cache_hint_selector_material_dark.xml"
+    }
+]

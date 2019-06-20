@@ -48,20 +48,12 @@
 
 - (instancetype)init
 {
-    return [self initWithEncoderFactory:nil decoderFactory:nil];
-}
-
-- (instancetype)initWithEncoderFactory:(nullable id<RTCVideoEncoderFactory>)encoderFactory
-                        decoderFactory:(nullable id<RTCVideoDecoderFactory>)decoderFactory
-{
   self = [super init];
   if (self) {
-    if (encoderFactory == nil) {
-      encoderFactory = [[RTCDefaultVideoEncoderFactory alloc] init];
-    }
-    if (decoderFactory == nil) {
-      decoderFactory = [[RTCDefaultVideoDecoderFactory alloc] init];
-    }
+    RTCDefaultVideoDecoderFactory *decoderFactory
+      = [[RTCDefaultVideoDecoderFactory alloc] init];
+    RTCDefaultVideoEncoderFactory *encoderFactory
+      = [[RTCDefaultVideoEncoderFactory alloc] init];
     _peerConnectionFactory
       = [[RTCPeerConnectionFactory alloc] initWithEncoderFactory:encoderFactory
                                                   decoderFactory:decoderFactory];

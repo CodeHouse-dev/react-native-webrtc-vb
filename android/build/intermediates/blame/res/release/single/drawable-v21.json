@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/drawable-v21/abc_btn_colored_material.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/drawable-v21/abc_btn_colored_material.xml"
+    },
+    {
+        "merged": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/drawable-v21/abc_action_bar_item_background_material.xml",
+        "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/drawable-v21/abc_action_bar_item_background_material.xml"
+    }
+]

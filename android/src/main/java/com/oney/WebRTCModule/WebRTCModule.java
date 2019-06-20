@@ -14,17 +14,16 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.webrtc.*;
 
-@ReactModule(name = "WebRTCModule")
 public class WebRTCModule extends ReactContextBaseJavaModule {
     static final String TAG = WebRTCModule.class.getCanonicalName();
 
@@ -386,25 +385,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         return stream;
     }
 
-    private MediaStreamTrack getTrack(String trackId) {
-        MediaStreamTrack track = getLocalTrack(trackId);
-
-        if (track == null) {
-            for (int i = 0, size = mPeerConnectionObservers.size();
-                    i < size;
-                    i++) {
-                PeerConnectionObserver pco
-                    = mPeerConnectionObservers.valueAt(i);
-                track = pco.remoteTracks.get(trackId);
-                if (track != null) {
-                    break;
-                }
-            }
-        }
-
-        return track;
-    }
-
     MediaStreamTrack getLocalTrack(String trackId) {
         return getUserMediaImpl.getTrack(trackId);
     }
@@ -493,7 +473,29 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                              Callback    successCallback,
                              Callback    errorCallback) {
         ThreadUtils.runOnExecutor(() ->
-            getUserMediaImpl.getUserMedia(constraints, successCallback, errorCallback));
+            getUserMediaAsync(constraints, successCallback, errorCallback));
+    }
+
+    private void getUserMediaAsync(ReadableMap constraints,
+                                   Callback    successCallback,
+                                   Callback    errorCallback) {
+        String streamId = UUID.randomUUID().toString();
+        MediaStream mediaStream = mFactory.createLocalMediaStream(streamId);
+
+        if (mediaStream == null) {
+            // XXX The following does not follow the getUserMedia() algorithm
+            // specified by
+            // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
+            // with respect to distinguishing the various causes of failure.
+            errorCallback.invoke(
+                /* type */ null,
+                "Failed to create new media stream");
+        } else {
+            // FIXME If getUserMedia fails, then mediaStream is not disposed!
+            getUserMediaImpl.getUserMedia(
+                constraints, successCallback, errorCallback,
+                mediaStream);
+        }
     }
 
     @ReactMethod
@@ -537,9 +539,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void enumerateDevices(Callback callback) {
+    public void mediaStreamTrackGetSources(Callback callback) {
         ThreadUtils.runOnExecutor(() ->
-            callback.invoke(getUserMediaImpl.enumerateDevices()));
+            callback.invoke(getUserMediaImpl.mediaStreamTrackGetSources()));
     }
 
     @ReactMethod
@@ -586,7 +588,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     private void mediaStreamTrackSetEnabledAsync(String id, boolean enabled) {
-        MediaStreamTrack track = getTrack(id);
+        MediaStreamTrack track = getLocalTrack(id);
         if (track == null) {
             Log.d(TAG, "mediaStreamTrackSetEnabled() track is null");
             return;
@@ -875,7 +877,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
         if (pco == null || pco.getPeerConnection() == null) {
             Log.d(TAG, "peerConnectionGetStats() peerConnection is null");
-            cb.invoke(false, "PeerConnection ID not found");
         } else {
             pco.getStats(trackId, cb);
         }

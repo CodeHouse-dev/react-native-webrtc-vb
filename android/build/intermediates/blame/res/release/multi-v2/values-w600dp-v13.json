@@ -1,0 +1,48 @@
+{
+    "logs": [
+        {
+            "outputFile": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/incremental/mergeReleaseResources/merged.dir/values-w600dp-v13/values-w600dp-v13.xml",
+            "map": [
+                {
+                    "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/values-w600dp/values-w600dp.xml",
+                    "from": {
+                        "startLines": "4,5",
+                        "startColumns": "4,4",
+                        "startOffsets": "283,347",
+                        "endColumns": "63,54",
+                        "endOffsets": "342,397"
+                    },
+                    "to": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,119",
+                        "endColumns": "63,54",
+                        "endOffsets": "114,169"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "/Users/mac/projects/rulet/ChatRouletkaMobile/node_modules/react-native-webrtc/android/build/intermediates/res/merged/release/values-w600dp-v13/values-w600dp-v13.xml",
+            "map": [
+                {
+                    "source": "/private/var/root/.gradle/caches/transforms-1/files-1.1/appcompat-v7-23.0.1.aar/e22023e16957e7a0a95a003dd0164642/res/values-w600dp/values-w600dp.xml",
+                    "from": {
+                        "startLines": "4,5",
+                        "startColumns": "4,4",
+                        "startOffsets": "283,347",
+                        "endColumns": "63,54",
+                        "endOffsets": "342,397"
+                    },
+                    "to": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,119",
+                        "endColumns": "63,54",
+                        "endOffsets": "114,169"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -26,9 +26,6 @@
 @property (nonatomic, strong) NSMutableDictionary<NSString *, RTCMediaStream *> *localStreams;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, RTCMediaStreamTrack *> *localTracks;
 
-- (instancetype)initWithEncoderFactory:(id<RTCVideoEncoderFactory>)encoderFactory
-                        decoderFactory:(id<RTCVideoDecoderFactory>)decoderFactory;
-
 - (RTCMediaStream*)streamForReactTag:(NSString*)reactTag;
 
 @end
