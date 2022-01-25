@@ -52,9 +52,9 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
  */
 
 #if !TARGET_OS_OSX
-@interface RTCVideoView : UIView <RTCVideoViewDelegate>
+@interface RTCVideoView : UIView <RTCVideoRenderer, RTCVideoViewDelegate>
 #else
-@interface RTCVideoView : NSView <RTCVideoViewDelegate>
+@interface RTCVideoView : NSView <RTCVideoRenderer, RTCVideoViewDelegate>
 #endif
 
 /**
@@ -71,6 +71,8 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
  * the CSS style {@code object-fit}.
  */
 @property (nonatomic) RTCVideoViewObjectFit objectFit;
+
+@property (nonatomic, copy) RCTDirectEventBlock onFirstFrame;
 
 /**
  * The {@link RRTCVideoRenderer} which implements the actual rendering and which
@@ -100,6 +102,7 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
    * The width and height of the video (frames) rendered by {@link #subview}.
    */
   CGSize _videoSize;
+  BOOL firstFrameRendered;
 }
 
 @synthesize videoView = _videoView;
@@ -108,6 +111,7 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
  * Tells this view that its window object changed.
  */
 - (void)didMoveToWindow {
+  firstFrameRendered = NO;
   // XXX This RTCVideoView strongly retains its videoTrack. The latter strongly
   // retains the former as well though because RTCVideoTrack strongly retains
   // the RTCVideoRenderers added to it. In other words, there is a cycle of
@@ -119,11 +123,15 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
   if (videoTrack) {
     if (self.window) {
       dispatch_async(_module.workerQueue, ^{
-        [videoTrack addRenderer:self.videoView];
+        //! TODO@Nikonets - not sure this change is correct #streaming
+        // [videoTrack addRenderer:self.videoView];
+        [videoTrack addRenderer:self];
       });
     } else {
       dispatch_async(_module.workerQueue, ^{
-        [videoTrack removeRenderer:self.videoView];
+        //! TODO@Nikonets - not sure this change is correct #streaming
+        // [videoTrack removeRenderer:self.videoView];
+        [videoTrack addRenderer:self];
       });
       _videoSize.height = 0;
       _videoSize.width = 0;
@@ -300,7 +308,9 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
   if (oldValue != videoTrack) {
     if (oldValue) {
       dispatch_async(_module.workerQueue, ^{
-        [oldValue removeRenderer:self.videoView];
+        //! TODO@Nikonets - not sure this change is correct #streaming
+        // [oldValue removeRenderer:self.videoView];
+        [oldValue removeRenderer:self];
       });
       _videoSize.height = 0;
       _videoSize.width = 0;
@@ -322,11 +332,44 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
     // of its videoTrack only while this view resides in a window.
     if (videoTrack && self.window) {
         dispatch_async(_module.workerQueue, ^{
-            [videoTrack addRenderer:self.videoView];
+            //! TODO@Nikonets - not sure this change is correct #streaming
+            // [videoTrack addRenderer:self.videoView];
+            [videoTrack addRenderer:self];
         });
     }
   }
 }
+
+#pragma mark - RTCVideoRenderer methods
+
+/**
+ * Renders a specific video frame. Delegates to the subview of this instance
+ * which implements the actual {@link RTCVideoRenderer}.
+ *
+ * @param frame The video frame to render.
+ */
+- (void)renderFrame:(RTCVideoFrame *)frame {
+  id<RTCVideoRenderer> videoRenderer = self.videoView;
+    if (self.onFirstFrame && !firstFrameRendered) {
+            firstFrameRendered = YES;
+      self.onFirstFrame(@{});
+    }
+    if (videoRenderer) {
+      [videoRenderer renderFrame:frame];
+    }
+}
+
+ * Sets the size of the video frame to render.
+ *
+ * @param size The size of the video frame to render.
+ */
+- (void)setSize:(CGSize)size {
+    id<RTCVideoRenderer> videoRenderer = self.videoView;
+    if (videoRenderer) {
+        [videoRenderer setSize:size];
+    }
+}
+
 
 #pragma mark - RTCVideoViewDelegate methods
 
@@ -357,6 +400,8 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
 @implementation RTCVideoViewManager
 
 RCT_EXPORT_MODULE()
+
+RCT_EXPORT_VIEW_PROPERTY(onFirstFrame, RCTDirectEventBlock)
 
 #if !TARGET_OS_OSX
 - (UIView *)view {

@@ -12,6 +12,7 @@
 #import <React/RCTBridge.h>
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTUtils.h>
+#import <WebRTC/WebRTC.h>
 
 #import <WebRTC/RTCDefaultVideoDecoderFactory.h>
 #import <WebRTC/RTCDefaultVideoEncoderFactory.h>
@@ -23,7 +24,11 @@
 
 @end
 
-@implementation WebRTCModule
+@implementation WebRTCModule {
+    RCTPromiseResolveBlock _resolveBlock;
+    RTCVideoTrack *_frameTrack;
+    int _quality;
+}
 
 + (BOOL)requiresMainQueueSetup
 {
@@ -119,8 +124,17 @@ RCT_EXPORT_MODULE();
   ];
 }
 
+RCT_REMAP_METHOD(releaseCapturer,
+    resolver:(RCTPromiseResolveBlock)resolve
+        rejecter:(RCTPromiseRejectBlock)reject)
+{
+    [_frameTrack removeRenderer:self];
+    _frameTrack = nil;
+}
+
 RCT_REMAP_METHOD(captureFrame,
     captureFrame:(nonnull NSString *)streamID
+    quality:(nonnull int *)quality
     resolver:(RCTPromiseResolveBlock)resolve
         rejecter:(RCTPromiseRejectBlock)reject)
 {
@@ -131,8 +145,11 @@ RCT_REMAP_METHOD(captureFrame,
     }
 
     _resolveBlock = resolve;
-    _frameTrack = stream.videoTracks.firstObject;
-    [_frameTrack addRenderer:self];
+    _quality = quality;
+    if (!_frameTrack) {
+      _frameTrack = stream.videoTracks.firstObject;
+      [_frameTrack addRenderer:self];
+    }
 }
 
 /** The size of the frame. */
@@ -145,7 +162,6 @@ RCT_REMAP_METHOD(captureFrame,
 - (void)renderFrame:(nullable RTCVideoFrame *)frame
 {
     if( !_resolveBlock ) {
-        [_frameTrack removeRenderer:self];
         return;
     }
     NSObject *buffer = (id) frame.buffer;
@@ -161,13 +177,14 @@ RCT_REMAP_METHOD(captureFrame,
                      fromRect:CGRectMake(0, 0,
                              CVPixelBufferGetWidth(bufferRef),
                              CVPixelBufferGetHeight(bufferRef))];
-
-        UIImage *uiImage = [UIImage imageWithCGImage:videoImage];
-        NSString *base64 = [UIImageJPEGRepresentation(uiImage, 0.8) base64EncodedStringWithOptions:(NSDataBase64EncodingOptions)0];
+        UIImage *uiImage = [UIImage imageWithCGImage:videoImage
+                              scale: 1.0
+                              orientation: UIImageOrientationRight
+                            ];
+        float qFloat = _quality;
+        NSString *base64 = [UIImageJPEGRepresentation(uiImage, (qFloat / 100)) base64EncodedStringWithOptions:(NSDataBase64EncodingOptions)0];
         _resolveBlock( base64 );
         _resolveBlock = nil;
-        [_frameTrack removeRenderer:self];
-        _frameTrack = nil;
         CGImageRelease(videoImage);
     }
 };
