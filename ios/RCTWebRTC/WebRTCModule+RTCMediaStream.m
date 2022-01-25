@@ -20,42 +20,29 @@
 
 @implementation WebRTCModule (RTCMediaStream)
 
-/**
- * {@link https://www.w3.org/TR/mediacapture-streams/#navigatorusermediaerrorcallback}
- */
-typedef void (^NavigatorUserMediaErrorCallback)(NSString *errorType, NSString *errorMessage);
+#pragma mark - getUserMedia
 
 /**
- * {@link https://www.w3.org/TR/mediacapture-streams/#navigatorusermediasuccesscallback}
- */
-typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream *mediaStream);
-
-/**
- * Initializes a new {@link RTCAudioTrack} which satisfies specific constraints,
- * adds it to a specific {@link RTCMediaStream}, and reports success to a
- * specific callback. Implements the audio-specific counterpart of the
- * {@code getUserMedia()} algorithm.
+ * Initializes a new {@link RTCAudioTrack} which satisfies the given constraints.
  *
  * @param constraints The {@code MediaStreamConstraints} which the new
  * {@code RTCAudioTrack} instance is to satisfy.
- * @param successCallback The {@link NavigatorUserMediaSuccessCallback} to which
- * success is to be reported.
- * @param errorCallback The {@link NavigatorUserMediaErrorCallback} to which
- * failure is to be reported.
- * @param mediaStream The {@link RTCMediaStream} which is being initialized as
- * part of the execution of the {@code getUserMedia()} algorithm, to which a
- * new {@code RTCAudioTrack} is to be added, and which is to be reported to
- * {@code successCallback} upon success.
  */
-- (void)getUserAudio:(NSDictionary *)constraints
-     successCallback:(NavigatorUserMediaSuccessCallback)successCallback
-       errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream *)mediaStream {
+- (RTCAudioTrack *)createAudioTrack:(NSDictionary *)constraints {
   NSString *trackId = [[NSUUID UUID] UUIDString];
   RTCAudioTrack *audioTrack
     = [self.peerConnectionFactory audioTrackWithTrackId:trackId];
+  return audioTrack;
+}
 
-  [mediaStream addAudioTrack:audioTrack];
+/**
+ * Initializes a new {@link RTCVideoTrack} which satisfies the given constraints.
+ */
+- (RTCVideoTrack *)createVideoTrack:(NSDictionary *)constraints {
+  RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
+
+  NSString *trackUUID = [[NSUUID UUID] UUIDString];
+  RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackUUID];
 
 #if !TARGET_IPHONE_SIMULATOR
   RTCCameraVideoCapturer *videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
@@ -127,14 +114,8 @@ RCT_EXPORT_METHOD(getDisplayMedia:(RCTPromiseResolveBlock)resolve
 RCT_EXPORT_METHOD(getUserMedia:(NSDictionary *)constraints
                successCallback:(RCTResponseSenderBlock)successCallback
                  errorCallback:(RCTResponseSenderBlock)errorCallback) {
-  // Initialize RTCMediaStream with a unique label in order to allow multiple
-  // RTCMediaStream instances initialized by multiple getUserMedia calls to be
-  // added to 1 RTCPeerConnection instance. As suggested by
-  // https://www.w3.org/TR/mediacapture-streams/#mediastream to be a good
-  // practice, use a UUID (conforming to RFC4122).
-  NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream *mediaStream
-    = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+  RTCAudioTrack *audioTrack = nil;
+  RTCVideoTrack *videoTrack = nil;
 
   if (constraints[@"audio"]) {
       audioTrack = [self createAudioTrack:constraints];
@@ -197,7 +178,9 @@ RCT_EXPORT_METHOD(getUserMedia:(NSDictionary *)constraints
 
   }
 
-  RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
+  self.localStreams[mediaStreamId] = mediaStream;
+  successCallback(@[ mediaStreamId, tracks ]);
+}
 
 #pragma mark - Other stream related APIs
 
@@ -337,79 +320,6 @@ RCT_EXPORT_METHOD(mediaStreamTrackSwitchCamera:(nonnull NSString *)trackID)
     }
   }
   return track;
-}
-
-/**
- * Obtains local media content of a specific type. Requests access for the
- * specified {@code mediaType} if necessary. In other words, implements a media
- * type-specific iteration of the {@code getUserMedia()} algorithm.
- *
- * @param mediaType Either {@link AVMediaTypAudio} or {@link AVMediaTypeVideo}
- * which specifies the type of the local media content to obtain.
- * @param constraints The {@code MediaStreamConstraints} which are to be
- * satisfied by the obtained local media content.
- * @param successCallback The {@link NavigatorUserMediaSuccessCallback} to which
- * success is to be reported.
- * @param errorCallback The {@link NavigatorUserMediaErrorCallback} to which
- * failure is to be reported.
- * @param mediaStream The {@link RTCMediaStream} which is to collect the
- * obtained local media content of the specified {@code mediaType}.
- */
-- (void)requestAccessForMediaType:(NSString *)mediaType
-                      constraints:(NSDictionary *)constraints
-                  successCallback:(NavigatorUserMediaSuccessCallback)successCallback
-                    errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-                      mediaStream:(RTCMediaStream *)mediaStream {
-  // According to step 6.2.1 of the getUserMedia() algorithm, if there is no
-  // source, fail "with a new DOMException object whose name attribute has the
-  // value NotFoundError."
-  // XXX The following approach does not work for audio in Simulator. That is
-  // because audio capture is done using AVAudioSession which does not use
-  // AVCaptureDevice there. Anyway, Simulator will not (visually) request access
-  // for audio.
-  if (mediaType == AVMediaTypeVideo
-      && [AVCaptureDevice devicesWithMediaType:mediaType].count == 0) {
-    // Since successCallback and errorCallback are asynchronously invoked
-    // elsewhere, make sure that the invocation here is consistent.
-    dispatch_async(dispatch_get_main_queue(), ^ {
-      errorCallback(@"DOMException", @"NotFoundError");
-    });
-    return;
-  }
-
-  [AVCaptureDevice
-    requestAccessForMediaType:mediaType
-    completionHandler:^ (BOOL granted) {
-      dispatch_async(dispatch_get_main_queue(), ^ {
-        if (granted) {
-          NavigatorUserMediaSuccessCallback scb
-            = ^ (RTCMediaStream *mediaStream) {
-              [self getUserMedia:constraints
-                 successCallback:successCallback
-                   errorCallback:errorCallback
-                     mediaStream:mediaStream];
-            };
-
-          if (mediaType == AVMediaTypeAudio) {
-            [self getUserAudio:constraints
-               successCallback:scb
-                 errorCallback:errorCallback
-                   mediaStream:mediaStream];
-          } else if (mediaType == AVMediaTypeVideo) {
-            [self getUserVideo:constraints
-               successCallback:scb
-                 errorCallback:errorCallback
-                   mediaStream:mediaStream];
-          }
-        } else {
-          // According to step 10 Permission Failure of the getUserMedia()
-          // algorithm, if the user has denied permission, fail "with a new
-          // DOMException object whose name attribute has the value
-          // NotAllowedError."
-          errorCallback(@"DOMException", @"NotAllowedError");
-        }
-      });
-    }];
 }
 
 @end
