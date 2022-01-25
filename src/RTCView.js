@@ -57,4 +57,12 @@ import { requireNativeComponent } from 'react-native';
  * zOrder: number
  */
 
+
+/**
+ * camera identifier for js events
+ * 
+ * name: PropTypes.string,
+ */
+
+
 export default requireNativeComponent('RTCVideoView');
