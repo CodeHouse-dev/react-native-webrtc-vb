@@ -1,30 +1,41 @@
 
 #import "VideoCaptureController.h"
 
-static int DEFAULT_WIDTH  = 1280;
-static int DEFAULT_HEIGHT = 720;
-static int DEFAULT_FPS    = 30;
+#import <React/RCTLog.h>
 
 
-@implementation VideoCaptureController {
-    RTCCameraVideoCapturer *_capturer;
-    NSString *_sourceId;
-    BOOL _usingFrontCamera;
-}
+@interface VideoCaptureController ()
 
--(instancetype)initWithCapturer:(RTCCameraVideoCapturer *)capturer
-                 andConstraints:(NSDictionary *)constraints {
+@property (nonatomic, strong) RTCCameraVideoCapturer *capturer;
+@property (nonatomic, strong) AVCaptureDeviceFormat *selectedFormat;
+@property (nonatomic, strong) AVCaptureDevice *device;
+@property (nonatomic, copy) NSString *deviceId;
+@property (nonatomic, assign) BOOL running;
+@property (nonatomic, assign) BOOL usingFrontCamera;
+@property (nonatomic, assign) int width;
+@property (nonatomic, assign) int height;
+@property (nonatomic, assign) int frameRate;
+
+@end
+
+@implementation VideoCaptureController
+
+- (instancetype)initWithCapturer:(RTCCameraVideoCapturer *)capturer
+                  andConstraints:(NSDictionary *)constraints {
     self = [super init];
     if (self) {
-        _capturer = capturer;
+        self.capturer = capturer;
+        self.running = NO;
 
         // Default to the front camera.
-        _usingFrontCamera = YES;
+        self.usingFrontCamera = YES;
 
-        // Check the video contraints: examine facingMode and sourceId
-        // and pick a default if neither are specified.
+        self.deviceId = constraints[@"deviceId"];
+        self.width = [constraints[@"width"] intValue];
+        self.height = [constraints[@"height"] intValue];
+        self.frameRate = [constraints[@"frameRate"] intValue];
+
         id facingMode = constraints[@"facingMode"];
-        id optionalConstraints = constraints[@"optional"];
 
         if (facingMode && [facingMode isKindOfClass:[NSString class]]) {
             AVCaptureDevicePosition position;
@@ -38,67 +49,140 @@ static int DEFAULT_FPS    = 30;
                 position = AVCaptureDevicePositionFront;
             }
 
-            _usingFrontCamera = position == AVCaptureDevicePositionFront;
-        } else if (optionalConstraints && [optionalConstraints isKindOfClass:[NSArray class]]) {
-            NSArray *options = optionalConstraints;
-            for (id item in options) {
-                if ([item isKindOfClass:[NSDictionary class]]) {
-                    NSString *sourceId = ((NSDictionary *)item)[@"sourceId"];
-                    if (sourceId && sourceId.length > 0) {
-                        _sourceId = sourceId;
-                        break;
-                    }
-                }
-            }
+            self.usingFrontCamera = position == AVCaptureDevicePositionFront;
         }
     }
 
     return self;
 }
 
--(void)startCapture {
-    AVCaptureDevice *device;
-    if (_sourceId) {
-        device = [AVCaptureDevice deviceWithUniqueID:_sourceId];
+- (void)dealloc {
+    self.device = NULL;
+}
+
+- (void)startCapture {
+    if (self.deviceId) {
+        self.device = [AVCaptureDevice deviceWithUniqueID:self.deviceId];
     }
-    if (!device) {
+    if (!self.device) {
         AVCaptureDevicePosition position
-            = _usingFrontCamera
+            = self.usingFrontCamera
                 ? AVCaptureDevicePositionFront
                 : AVCaptureDevicePositionBack;
-        device = [self findDeviceForPosition:position];
+        self.device = [self findDeviceForPosition:position];
     }
 
-    // TODO: Extract width and height from constraints.
-    AVCaptureDeviceFormat *format
-        = [self selectFormatForDevice:device
-                      withTargetWidth:DEFAULT_WIDTH
-                     withTargetHeight:DEFAULT_HEIGHT];
-    if (!format) {
-        NSLog(@"[VideoCaptureController] No valid formats for device %@", device);
+    if (!self.device) {
+        RCTLogWarn(@"[VideoCaptureController] No capture devices found!");
 
         return;
     }
+        
+    AVCaptureDeviceFormat *format
+        = [self selectFormatForDevice:self.device
+                      withTargetWidth:self.width
+                     withTargetHeight:self.height];
+    if (!format) {
+        RCTLogWarn(@"[VideoCaptureController] No valid formats for device %@", self.device);
 
-    // TODO: Extract fps from constraints.
-    [_capturer startCaptureWithDevice:device format:format fps:DEFAULT_FPS];
+        return;
+    }
+    
+    self.selectedFormat = format;
 
-    NSLog(@"[VideoCaptureController] Capture started");
+    RCTLog(@"[VideoCaptureController] Capture will start");
+
+    // Starting the capture happens on another thread. Wait for it.
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    
+    __weak VideoCaptureController *weakSelf = self;
+    [self.capturer startCaptureWithDevice:self.device format:format fps:self.frameRate completionHandler:^(NSError *err) {
+        if (err) {
+            RCTLogError(@"[VideoCaptureController] Error starting capture: %@", err);
+        } else {
+            RCTLog(@"[VideoCaptureController] Capture started");
+            weakSelf.running = YES;
+        }
+        dispatch_semaphore_signal(semaphore);
+    }];
+
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
 }
 
--(void)stopCapture {
-    [_capturer stopCapture];
+- (void)stopCapture {
+    if (!self.running)
+        return;
 
-    NSLog(@"[VideoCaptureController] Capture stopped");
+    RCTLog(@"[VideoCaptureController] Capture will stop");
+    // Stopping the capture happens on another thread. Wait for it.
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    __weak VideoCaptureController *weakSelf = self;
+    [self.capturer stopCaptureWithCompletionHandler:^{
+        RCTLog(@"[VideoCaptureController] Capture stopped");
+        weakSelf.running = NO;
+        weakSelf.device = nil;
+        
+        dispatch_semaphore_signal(semaphore);
+    }];
+
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
 }
 
--(void)switchCamera {
-    _usingFrontCamera = !_usingFrontCamera;
+- (void)switchCamera {
+    self.usingFrontCamera = !self.usingFrontCamera;
+    self.deviceId = nil;
+    self.device = nil;
 
     [self startCapture];
 }
 
+#pragma mark NSKeyValueObserving
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
+    if (@available(iOS 11.1, *)) {
+        if ([object isKindOfClass:[AVCaptureDevice class]] && [keyPath isEqualToString:@"systemPressureState"]) {
+            AVCaptureDevice *device = (AVCaptureDevice *)object;
+            AVCaptureSystemPressureLevel pressureLevel = ((AVCaptureSystemPressureState *)change[NSKeyValueChangeNewKey]).level;
+            if (pressureLevel == AVCaptureSystemPressureLevelSerious || pressureLevel == AVCaptureSystemPressureLevelCritical) {
+                RCTLogWarn(@"[VideoCaptureController] Reached elevated system pressure level: %@. Throttling frame rate.", pressureLevel);
+                [self throttleFrameRateForDevice:device];
+            }
+            else if (pressureLevel == AVCaptureSystemPressureLevelNominal) {
+                RCTLogWarn(@"[VideoCaptureController] Restored normal system pressure level. Resetting frame rate to default.");
+                [self resetFrameRateForDevice:device];
+            }
+        }
+    }
+}
+
+- (void)registerSystemPressureStateObserverForDevice:(AVCaptureDevice *)device {
+    if (@available(iOS 11.1, *)) {
+        [device addObserver:self
+                 forKeyPath:@"systemPressureState"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
+    }
+}
+
+- (void)removeObserverForDevice:(AVCaptureDevice *)device {
+    if (@available(iOS 11.1, *)) {
+        [device removeObserver:self forKeyPath:@"systemPressureState"];
+    }
+}
+
 #pragma mark Private
+
+- (void)setDevice:(AVCaptureDevice *)device {
+    if (_device) {
+        [self removeObserverForDevice:_device];
+    }
+    if (device) {
+        [self registerSystemPressureStateObserverForDevice:device];
+    }
+    
+    _device = device;
+}
 
 - (AVCaptureDevice *)findDeviceForPosition:(AVCaptureDevicePosition)position {
     NSArray<AVCaptureDevice *> *captureDevices = [RTCCameraVideoCapturer captureDevices];
@@ -108,7 +192,7 @@ static int DEFAULT_FPS    = 30;
         }
     }
 
-    return captureDevices[0];
+    return [captureDevices firstObject];
 }
 
 - (AVCaptureDeviceFormat *)selectFormatForDevice:(AVCaptureDevice *)device
@@ -132,6 +216,36 @@ static int DEFAULT_FPS    = 30;
     }
 
     return selectedFormat;
+}
+
+- (void)throttleFrameRateForDevice:(AVCaptureDevice *)device {
+    NSError *error = nil;
+    
+    [device lockForConfiguration:&error];
+    if (error) {
+        RCTLog(@"[VideoCaptureController] Could not lock device for configuration: %@", error);
+        return;
+    }
+    
+    device.activeVideoMinFrameDuration = CMTimeMake(1, 20);
+    device.activeVideoMaxFrameDuration = CMTimeMake(1, 15);
+    
+    [device unlockForConfiguration];
+}
+
+- (void)resetFrameRateForDevice:(AVCaptureDevice *)device {
+    NSError *error = nil;
+    
+    [device lockForConfiguration:&error];
+    if (error) {
+        RCTLog(@"[VideoCaptureController] Could not lock device for configuration: %@", error);
+        return;
+    }
+    
+    device.activeVideoMinFrameDuration = kCMTimeInvalid;
+    device.activeVideoMaxFrameDuration = kCMTimeInvalid;
+    
+    [device unlockForConfiguration];
 }
 
 @end

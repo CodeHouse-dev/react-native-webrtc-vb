@@ -1,15 +1,20 @@
 package com.oney.WebRTCModule;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.media.projection.MediaProjectionManager;
+import android.util.DisplayMetrics;
 import android.util.Log;
 
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.BaseActivityEventListener;
 import com.facebook.react.bridge.Callback;
+import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
-import com.facebook.react.bridge.ReadableType;
+import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 
@@ -34,6 +39,8 @@ class GetUserMediaImpl {
      */
     private static final String TAG = WebRTCModule.TAG;
 
+    private static final int PERMISSION_REQUEST_CODE = (int) (Math.random() * Short.MAX_VALUE);
+
     private final CameraEnumerator cameraEnumerator;
     private final ReactApplicationContext reactContext;
 
@@ -46,77 +53,111 @@ class GetUserMediaImpl {
 
     private final WebRTCModule webRTCModule;
 
-    GetUserMediaImpl(
-            WebRTCModule webRTCModule,
-            ReactApplicationContext reactContext) {
+    private Promise displayMediaPromise;
+    private Intent mediaProjectionPermissionResultData;
+
+    GetUserMediaImpl(WebRTCModule webRTCModule, ReactApplicationContext reactContext) {
         this.webRTCModule = webRTCModule;
         this.reactContext = reactContext;
 
-        // NOTE: to support Camera2, the device should:
-        //   1. Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
-        //   2. all camera support level should greater than LEGACY
-        //   see: https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#INFO_SUPPORTED_HARDWARE_LEVEL
-        if (Camera2Enumerator.isSupported(reactContext)) {
+        boolean camera2supported = false;
+
+        try {
+            camera2supported = Camera2Enumerator.isSupported(reactContext);
+        } catch (Throwable tr) {
+            // Some devices will crash here with: Fatal Exception: java.lang.AssertionError: Supported FPS ranges cannot be null.
+            // Make sure we don't.
+            Log.w(TAG, "Error checking for Camera2 API support.", tr);
+        }
+
+        if (camera2supported) {
             Log.d(TAG, "Creating video capturer using Camera2 API.");
             cameraEnumerator = new Camera2Enumerator(reactContext);
         } else {
             Log.d(TAG, "Creating video capturer using Camera1 API.");
             cameraEnumerator = new Camera1Enumerator(false);
         }
-    }
 
-    /**
-     * Includes default constraints set for the audio media type.
-     *
-     * @param audioConstraints {@code MediaConstraints} instance to be filled
-     * with the default constraints for audio media type.
-     */
-    private void addDefaultAudioConstraints(MediaConstraints audioConstraints) {
-        audioConstraints.optional.add(
-            new MediaConstraints.KeyValuePair("googNoiseSuppression", "true"));
-        audioConstraints.optional.add(
-            new MediaConstraints.KeyValuePair("googEchoCancellation", "true"));
-        audioConstraints.optional.add(
-            new MediaConstraints.KeyValuePair("echoCancellation", "true"));
-        audioConstraints.optional.add(
-            new MediaConstraints.KeyValuePair("googEchoCancellation2", "true"));
-        audioConstraints.optional.add(
-            new MediaConstraints.KeyValuePair(
-                    "googDAEchoCancellation", "true"));
-    }
+        reactContext.addActivityEventListener(new BaseActivityEventListener() {
+            @Override
+            public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
+                super.onActivityResult(activity, requestCode, resultCode, data);
+                if (requestCode == PERMISSION_REQUEST_CODE) {
+                    if (resultCode != Activity.RESULT_OK) {
+                        displayMediaPromise.reject("DOMException", "NotAllowedError");
+                        displayMediaPromise = null;
+                        return;
+                    }
 
-    /**
-     * Converts the value of a specific {@code MediaStreamConstraints} key to
-     * the respective {@link Manifest.permission} value.
-     *
-     * @param constraints the {@code MediaStreamConstraints} within which the
-     * specified {@code key} may be associated with the value to convert
-     * @param key the key within the specified {@code constraints} which may be
-     * associated with the value to convert
-     * @param permissions the {@code List} of {@code Manifest.permission} values
-     * to collect the result of the conversion
-     */
-    private void constraint2permission(
-            ReadableMap constraints,
-            String key,
-            List<String> permissions) {
-        if (constraints.hasKey(key)) {
-            ReadableType type = constraints.getType(key);
-
-            if (type == ReadableType.Boolean
-                    ? constraints.getBoolean(key)
-                    : type == ReadableType.Map) {
-                if ("audio".equals(key)) {
-                    permissions.add(PERMISSION_AUDIO);
-                } else if ("video".equals(key)) {
-                    permissions.add(PERMISSION_VIDEO);
+                    mediaProjectionPermissionResultData = data;
+                    createScreenStream();
                 }
             }
-        }
+        });
     }
 
-    private ReactApplicationContext getReactApplicationContext() {
-        return reactContext;
+    private AudioTrack createAudioTrack(ReadableMap constraints) {
+        ReadableMap audioConstraintsMap = constraints.getMap("audio");
+
+        Log.d(TAG, "getUserMedia(audio): " + audioConstraintsMap);
+
+        String id = UUID.randomUUID().toString();
+        PeerConnectionFactory pcFactory = webRTCModule.mFactory;
+        MediaConstraints peerConstraints = webRTCModule.constraintsForOptions(audioConstraintsMap);
+
+        //PeerConnectionFactory.createAudioSource will throw an error when mandatory constraints contain nulls.
+        //so, let's check for nulls
+        checkMandatoryConstraints(peerConstraints);
+
+        AudioSource audioSource = pcFactory.createAudioSource(peerConstraints);
+        AudioTrack track = pcFactory.createAudioTrack(id, audioSource);
+        
+        // surfaceTextureHelper is initialized for videoTrack only, so its null here.
+        tracks.put(
+            id,
+            new TrackPrivate(track, audioSource, /* videoCapturer */ null, /* surfaceTextureHelper */ null));
+
+        return track;
+    }
+
+    private void checkMandatoryConstraints(MediaConstraints peerConstraints) {
+        ArrayList<MediaConstraints.KeyValuePair> valid = new ArrayList<>(peerConstraints.mandatory.size());
+
+        for (MediaConstraints.KeyValuePair constraint : peerConstraints.mandatory) {
+            if (constraint.getValue() != null) {
+                valid.add(constraint);
+            } else {
+                Log.d(TAG, String.format("constraint %s is null, ignoring it",
+                        constraint.getKey()));
+            }
+        }
+
+        peerConstraints.mandatory.clear();
+        peerConstraints.mandatory.addAll(valid);
+    }
+
+    ReadableArray enumerateDevices() {
+        WritableArray array = Arguments.createArray();
+        String[] devices = cameraEnumerator.getDeviceNames();
+
+        for (int i = 0; i < devices.length; ++i) {
+            String deviceName = devices[i];
+            boolean isFrontFacing;
+            try {
+                // This can throw an exception when using the Camera 1 API.
+                isFrontFacing = cameraEnumerator.isFrontFacing(deviceName);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to check the facing mode of camera");
+                continue;
+            }
+            WritableMap params = Arguments.createMap();
+            params.putString("facing", isFrontFacing ? "front" : "environment");
+            params.putString("deviceId", "" + i);
+            params.putString("groupId", "");
+            params.putString("label", deviceName);
+            params.putString("kind", "videoinput");
+            array.pushMap(params);
+        }
     }
 
     MediaStreamTrack getTrack(String id) {
@@ -155,15 +196,9 @@ class GetUserMediaImpl {
      * not been granted yet, they will be requested.
      */
     void getUserMedia(
-            final ReadableMap constraints,
-            final Callback successCallback,
-            final Callback errorCallback,
-            final MediaStream mediaStream) {
-        // TODO: change getUserMedia constraints format to support new syntax
-        //   constraint format seems changed, and there is no mandatory any more.
-        //   and has a new syntax/attrs to specify resolution
-        //   should change `parseConstraints()` according
-        //   see: https://www.w3.org/TR/mediacapture-streams/#idl-def-MediaTrackConstraints
+        final ReadableMap constraints,
+        final Callback successCallback,
+        final Callback errorCallback) {
 
         final ArrayList<String> requestPermissions = new ArrayList<>();
 
@@ -183,67 +218,124 @@ class GetUserMediaImpl {
             return;
         }
 
-        requestPermissions(
-            requestPermissions,
-            /* successCallback */ new Callback() {
-                @Override
-                public void invoke(Object... args) {
-                    getUserMedia(
-                        constraints,
-                        successCallback,
-                        errorCallback,
-                        mediaStream,
-                        /* grantedPermissions */ (List<String>) args[0]);
-                }
-            },
-            /* errorCallback */ new Callback() {
-                @Override
-                public void invoke(Object... args) {
-                    // According to step 10 Permission Failure of the
-                    // getUserMedia() algorithm, if the user has denied
-                    // permission, fail "with a new DOMException object whose
-                    // name attribute has the value NotAllowedError."
-                    errorCallback.invoke("DOMException", "NotAllowedError");
-                }
-            });
-    }
+        if (constraints.hasKey("video")) {
+            ReadableMap videoConstraintsMap = constraints.getMap("video");
 
-    /**
-     * Implements {@code getUserMedia} with the knowledge that the necessary
-     * permissions have already been granted. If the necessary permissions have
-     * not been granted yet, they will NOT be requested.
-     */
-    private void getUserMedia(
-            ReadableMap constraints,
-            Callback successCallback,
-            Callback errorCallback,
-            MediaStream mediaStream,
-            List<String> grantedPermissions) {
-        MediaStreamTrack[] tracks = new MediaStreamTrack[2];
+            Log.d(TAG, "getUserMedia(video): " + videoConstraintsMap);
 
-        // If we fail to create either, destroy the other one and fail.
-        if ((grantedPermissions.contains(PERMISSION_AUDIO)
-                    && (tracks[0] = getUserAudio(constraints)) == null)
-                || (grantedPermissions.contains(PERMISSION_VIDEO)
-                    && (tracks[1] = getUserVideo(constraints)) == null)) {
-             for (MediaStreamTrack track : tracks) {
-                 if (track != null) {
-                     removeTrack(track.id());
-                     track.dispose();
-                 }
-             }
+            CameraCaptureController cameraCaptureController = new CameraCaptureController(
+                cameraEnumerator,
+                videoConstraintsMap);
 
-             // XXX The following does not follow the getUserMedia() algorithm
-             // specified by
-             // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
-             // with respect to distinguishing the various causes of failure.
-             errorCallback.invoke(
-                 /* type */ null,
-                 "Failed to create new track");
-             return;
+            videoTrack = createVideoTrack(cameraCaptureController);
         }
 
-        WritableArray tracks_ = Arguments.createArray();
+        if (audioTrack == null && videoTrack == null) {
+            // Fail with DOMException with name AbortError as per:
+            // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
+            errorCallback.invoke("DOMException", "AbortError");
+            return;
+        }
+
+        createStream(new MediaStreamTrack[]{audioTrack, videoTrack}, (streamId, tracksInfo) -> {
+            WritableArray tracksInfoWritableArray = Arguments.createArray();
+
+            for (WritableMap trackInfo : tracksInfo) {
+                tracksInfoWritableArray.pushMap(trackInfo);
+            }
+
+            successCallback.invoke(streamId, tracksInfoWritableArray);
+        });
+    }
+
+    void mediaStreamTrackSetEnabled(String trackId, final boolean enabled) {
+        TrackPrivate track = tracks.get(trackId);
+        if (track != null && track.videoCaptureController != null) {
+            if (enabled) {
+                track.videoCaptureController.startCapture();
+            } else {
+                track.videoCaptureController.stopCapture();
+            }
+        }
+    }
+
+    void disposeTrack(String id) {
+        TrackPrivate track = tracks.remove(id);
+        if (track != null) {
+            track.dispose();
+        }
+    }
+
+    void switchCamera(String trackId) {
+        TrackPrivate track = tracks.get(trackId);
+        if (track != null && track.videoCaptureController instanceof CameraCaptureController) {
+            CameraCaptureController cameraCaptureController = (CameraCaptureController) track.videoCaptureController;
+            cameraCaptureController.switchCamera();
+        }
+    }
+
+    void getDisplayMedia(Promise promise) {
+        if (this.displayMediaPromise != null) {
+            promise.reject(new RuntimeException("Another operation is pending."));
+            return;
+        }
+
+        Activity currentActivity = this.reactContext.getCurrentActivity();
+        if (currentActivity == null) {
+            promise.reject(new RuntimeException("No current Activity."));
+            return;
+        }
+
+        this.displayMediaPromise = promise;
+
+        MediaProjectionManager mediaProjectionManager =
+            (MediaProjectionManager) currentActivity.getApplication().getSystemService(
+                Context.MEDIA_PROJECTION_SERVICE);
+
+        if (mediaProjectionManager != null) {
+            UiThreadUtil.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    currentActivity.startActivityForResult(
+                        mediaProjectionManager.createScreenCaptureIntent(), PERMISSION_REQUEST_CODE);
+                }
+            });
+
+        } else {
+            promise.reject(new RuntimeException("MediaProjectionManager is null."));
+        }
+    }
+
+    private void createScreenStream() {
+        VideoTrack track = createScreenTrack();
+
+        if (track == null) {
+            displayMediaPromise.reject(new RuntimeException("ScreenTrack is null."));
+        } else {
+            createStream(new MediaStreamTrack[]{track}, (streamId, tracksInfo) -> {
+                WritableMap data = Arguments.createMap();
+
+                data.putString("streamId", streamId);
+
+                if (tracksInfo.size() == 0) {
+                    displayMediaPromise.reject(new RuntimeException("No ScreenTrackInfo found."));
+                } else {
+                    data.putMap("track", tracksInfo.get(0));
+                    displayMediaPromise.resolve(data);
+                }
+            });
+        }
+
+        // Cleanup
+        mediaProjectionPermissionResultData = null;
+        displayMediaPromise = null;
+    }
+
+    private void createStream(MediaStreamTrack[] tracks, BiConsumer<String, ArrayList<WritableMap>> successCallback) {
+        String streamId = UUID.randomUUID().toString();
+        MediaStream mediaStream = webRTCModule.mFactory.createLocalMediaStream(streamId);
+
+        ArrayList<WritableMap> tracksInfo = new ArrayList<>();
 
         for (MediaStreamTrack track : tracks) {
             if (track == null) {
@@ -258,16 +350,27 @@ class GetUserMediaImpl {
                 mediaStream.addTrack((VideoTrack) track);
             }
 
-            WritableMap track_ = Arguments.createMap();
-            String kind = track.kind();
+            WritableMap trackInfo = Arguments.createMap();
+            String trackId = track.id();
 
-            track_.putBoolean("enabled", track.enabled());
-            track_.putString("id", id);
-            track_.putString("kind", kind);
-            track_.putString("label", kind);
-            track_.putString("readyState", track.state().toString());
-            track_.putBoolean("remote", false);
-            tracks_.pushMap(track_);
+            trackInfo.putBoolean("enabled", track.enabled());
+            trackInfo.putString("id", trackId);
+            trackInfo.putString("kind", track.kind());
+            trackInfo.putString("label", trackId);
+            trackInfo.putString("readyState", track.state().toString());
+            trackInfo.putBoolean("remote", false);
+
+            if (track instanceof VideoTrack) {
+                TrackPrivate tp = this.tracks.get(trackId);
+                AbstractVideoCaptureController vcc = tp.videoCaptureController;
+                WritableMap settings = Arguments.createMap();
+                settings.putInt("height", vcc.getHeight());
+                settings.putInt("width", vcc.getWidth());
+                settings.putInt("frameRate", vcc.getFrameRate());
+                trackInfo.putMap("settings", settings);
+            }
+
+            tracksInfo.add(trackInfo);
         }
 
         String streamId = mediaStream.getId();
@@ -275,171 +378,48 @@ class GetUserMediaImpl {
         Log.d(TAG, "MediaStream id: " + streamId);
         webRTCModule.localStreams.put(streamId, mediaStream);
 
-        successCallback.invoke(streamId, tracks_);
+        successCallback.accept(streamId, tracksInfo);
     }
 
-    private VideoTrack getUserVideo(ReadableMap constraints) {
-        ReadableMap videoConstraintsMap = null;
+    private VideoTrack createScreenTrack() {
+        DisplayMetrics displayMetrics = DisplayUtils.getDisplayMetrics(reactContext.getCurrentActivity());
+        int width = displayMetrics.widthPixels;
+        int height = displayMetrics.heightPixels;
+        ScreenCaptureController screenCaptureController
+            = new ScreenCaptureController(reactContext.getCurrentActivity(), width, height, mediaProjectionPermissionResultData);
+        return createVideoTrack(screenCaptureController);
+    }
 
-        if (constraints.getType("video") == ReadableType.Map) {
-            videoConstraintsMap = constraints.getMap("video");
-        }
+    private VideoTrack createVideoTrack(AbstractVideoCaptureController videoCaptureController) {
+        videoCaptureController.initializeVideoCapturer();
 
-        Log.i(TAG, "getUserMedia(video): " + videoConstraintsMap);
-
-        VideoCaptureController videoCaptureController
-            = new VideoCaptureController(cameraEnumerator, videoConstraintsMap);
-        VideoCapturer videoCapturer = videoCaptureController.getVideoCapturer();
+        VideoCapturer videoCapturer = videoCaptureController.videoCapturer;
         if (videoCapturer == null) {
             return null;
         }
 
         PeerConnectionFactory pcFactory = webRTCModule.mFactory;
-        VideoSource videoSource = pcFactory.createVideoSource(videoCapturer);
+        EglBase.Context eglContext = EglUtils.getRootEglBaseContext();
+        SurfaceTextureHelper surfaceTextureHelper =
+            SurfaceTextureHelper.create("CaptureThread", eglContext);
+
+        if (surfaceTextureHelper == null) {
+            Log.d(TAG, "Error creating SurfaceTextureHelper");
+            return null;
+        }
+
+        VideoSource videoSource = pcFactory.createVideoSource(videoCapturer.isScreencast());
+        videoCapturer.initialize(surfaceTextureHelper, reactContext, videoSource.getCapturerObserver());
 
         String id = UUID.randomUUID().toString();
         VideoTrack track = pcFactory.createVideoTrack(id, videoSource);
 
         track.setEnabled(true);
+        tracks.put(id, new TrackPrivate(track, videoSource, videoCaptureController, surfaceTextureHelper));
+
         videoCaptureController.startCapture();
 
-        tracks.put(id, new TrackPrivate(track, videoSource, videoCaptureController));
-
         return track;
-    }
-
-    ReadableArray mediaStreamTrackGetSources() {
-        WritableArray array = Arguments.createArray();
-        String[] devices = cameraEnumerator.getDeviceNames();
-
-        for(int i = 0; i < devices.length; ++i) {
-            WritableMap params = Arguments.createMap();
-            String facing
-                = cameraEnumerator.isFrontFacing(devices[i]) ? "front" : "back";
-            params.putString("label", devices[i]);
-            params.putString("id", "" + i);
-            params.putString("facing", facing);
-            params.putString("kind", "video");
-            array.pushMap(params);
-        }
-
-        WritableMap audio = Arguments.createMap();
-        audio.putString("label", "Audio");
-        audio.putString("id", "audio-1");
-        audio.putString("facing", "");
-        audio.putString("kind", "audio");
-        array.pushMap(audio);
-
-        return array;
-    }
-
-    void mediaStreamTrackSetEnabled(String trackId, final boolean enabled) {
-        TrackPrivate track = tracks.get(trackId);
-        if (track != null && track.videoCaptureController != null) {
-            if (enabled) {
-                track.videoCaptureController.startCapture();
-            } else {
-                track.videoCaptureController.stopCapture();
-            }
-        }
-    }
-
-    void mediaStreamTrackStop(String id) {
-        MediaStreamTrack track = getTrack(id);
-        if (track == null) {
-            Log.d(
-                TAG,
-                "mediaStreamTrackStop() No local MediaStreamTrack with id "
-                    + id);
-            return;
-        }
-        track.setEnabled(false);
-        removeTrack(id);
-    }
-
-    private void removeTrack(String id) {
-        TrackPrivate track = tracks.remove(id);
-        if (track != null) {
-            VideoCaptureController videoCaptureController
-                = track.videoCaptureController;
-            if (videoCaptureController != null) {
-                if (videoCaptureController.stopCapture()) {
-                    videoCaptureController.dispose();
-                }
-            }
-            track.mediaSource.dispose();
-        }
-    }
-
-    private void requestPermissions(
-            final ArrayList<String> permissions,
-            final Callback successCallback,
-            final Callback errorCallback) {
-        PermissionUtils.Callback callback = new PermissionUtils.Callback() {
-            /**
-             * The indicator which determines whether this
-             * {@code PermissionUtils.Callback} has already been invoked.
-             * Introduced in order to prevent multiple invocations of one and
-             * the same instance of a react-native callback from native code
-             * which is illegal and raises a fatal {@link RuntimeException}. The
-             * rationale behind the introduction of the indicator is that asking
-             * multiple times for one and the same permission is not as severe
-             * an issue as killing the app's process. I don't see how it can
-             * happen at all but Crashlytics says it has happened on at least
-             * four different phone brands.
-             */
-            private boolean invoked = false;
-
-            @Override
-            public void invoke(String[] permissions_, int[] grantResults) {
-                if (invoked) {
-                    Log.w(
-                        TAG,
-                        "GetUserMediaImpl.PermissionUtils.Callback "
-                            + "invoked more than once!");
-                    return;
-                }
-                invoked = true;
-
-                List<String> grantedPermissions = new ArrayList<>();
-                List<String> deniedPermissions = new ArrayList<>();
-
-                for (int i = 0; i < permissions_.length; ++i) {
-                    String permission = permissions_[i];
-                    int grantResult = grantResults[i];
-
-                    if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                        grantedPermissions.add(permission);
-                    } else {
-                        deniedPermissions.add(permission);
-                    }
-                }
-
-                // Success means that all requested permissions were granted.
-                for (String p : permissions) {
-                    if (!grantedPermissions.contains(p)) {
-                        // According to step 6 of the getUserMedia() algorithm
-                        // "if the result is denied, jump to the step Permission
-                        // Failure."
-                        errorCallback.invoke(deniedPermissions);
-                        return;
-                    }
-                }
-                successCallback.invoke(grantedPermissions);
-            }
-        };
-
-        PermissionUtils.requestPermissions(
-            getReactApplicationContext(),
-            permissions.toArray(new String[permissions.size()]),
-            callback);
-    }
-
-    void switchCamera(String trackId) {
-        TrackPrivate track = tracks.get(trackId);
-        if (track != null && track.videoCaptureController != null) {
-            track.videoCaptureController.switchCamera();
-        }
     }
 
     /**
@@ -458,25 +438,64 @@ class GetUserMediaImpl {
          * The {@code VideoCapturer} from which {@link #mediaSource} was created
          * if {@link #track} is a {@link VideoTrack}.
          */
-        public final VideoCaptureController videoCaptureController;
+        public final AbstractVideoCaptureController videoCaptureController;
+        
+        private final SurfaceTextureHelper surfaceTextureHelper;
+
+        /**
+         * Whether this object has been disposed or not.
+         */
+        private boolean disposed;
 
         /**
          * Initializes a new {@code TrackPrivate} instance.
          *
          * @param track
-         * @param mediaSource the {@code MediaSource} from which the specified
-         * {@code code} was created
-         * @param videoCapturer the {@code VideoCapturer} from which the
-         * specified {@code mediaSource} was created if the specified
-         * {@code track} is a {@link VideoTrack}
+         * @param mediaSource            the {@code MediaSource} from which the specified
+         *                               {@code code} was created
+         * @param videoCaptureController the {@code AbstractVideoCaptureController} from which the
+         *                               specified {@code mediaSource} was created if the specified
+         *                               {@code track} is a {@link VideoTrack}
          */
         public TrackPrivate(
-                MediaStreamTrack track,
-                MediaSource mediaSource,
-                VideoCaptureController videoCaptureController) {
+            MediaStreamTrack track,
+            MediaSource mediaSource,
+            AbstractVideoCaptureController videoCaptureController,
+            SurfaceTextureHelper surfaceTextureHelper) {
             this.track = track;
             this.mediaSource = mediaSource;
             this.videoCaptureController = videoCaptureController;
+            this.surfaceTextureHelper = surfaceTextureHelper;
+            this.disposed = false;
         }
+
+        public void dispose() {
+            if (!disposed) {
+                if (videoCaptureController != null) {
+                    if (videoCaptureController.stopCapture()) {
+                        videoCaptureController.dispose();
+                    }
+                }
+                
+                /*
+                 * As per webrtc library documentation - The caller still has ownership of {@code
+                 * surfaceTextureHelper} and is responsible for making sure surfaceTextureHelper.dispose() is
+                 * called. This also means that the caller can reuse the SurfaceTextureHelper to initialize a new
+                 * VideoCapturer once the previous VideoCapturer has been disposed. */
+                
+                if(surfaceTextureHelper != null) {
+                    surfaceTextureHelper.stopListening();
+                    surfaceTextureHelper.dispose();
+                }
+                
+                mediaSource.dispose();
+                track.dispose();
+                disposed = true;
+            }
+        }
+    }
+
+    private interface BiConsumer<T, U> {
+        void accept(T t, U u);
     }
 }

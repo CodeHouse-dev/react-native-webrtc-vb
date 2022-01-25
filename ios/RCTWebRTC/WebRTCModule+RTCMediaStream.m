@@ -14,18 +14,9 @@
 #import "RTCMediaStreamTrack+React.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 
-@implementation AVCaptureDevice (React)
-
-- (NSString*)positionString {
-  switch (self.position) {
-    case AVCaptureDevicePositionUnspecified: return @"unspecified";
-    case AVCaptureDevicePositionBack: return @"back";
-    case AVCaptureDevicePositionFront: return @"front";
-  }
-  return nil;
-}
-
-@end
+#import "ScreenCapturer.h"
+#import "ScreenCaptureController.h"
+#import "VideoCaptureController.h"
 
 @implementation WebRTCModule (RTCMediaStream)
 
@@ -66,10 +57,73 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream *mediaStream);
 
   [mediaStream addAudioTrack:audioTrack];
 
-  successCallback(mediaStream);
+#if !TARGET_IPHONE_SIMULATOR
+  RTCCameraVideoCapturer *videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
+  VideoCaptureController *videoCaptureController
+        = [[VideoCaptureController alloc] initWithCapturer:videoCapturer
+                                            andConstraints:constraints[@"video"]];
+  videoTrack.captureController = videoCaptureController;
+  [videoCaptureController startCapture];
+#endif
+
+  return videoTrack;
 }
 
-// TODO: Use RCTConvert for constraints ...
+- (RTCVideoTrack *)createScreenCaptureVideoTrack {
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_OSX
+    return nil;
+#endif
+
+    RTCVideoSource *videoSource = [self.peerConnectionFactory videoSourceForScreenCast:YES];
+
+    NSString *trackUUID = [[NSUUID UUID] UUIDString];
+    RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackUUID];
+
+    ScreenCapturer *screenCapturer = [[ScreenCapturer alloc] initWithDelegate:videoSource];
+    ScreenCaptureController *screenCaptureController = [[ScreenCaptureController alloc] initWithCapturer:screenCapturer];
+    videoTrack.captureController = screenCaptureController;
+    [screenCaptureController startCapture];
+
+    return videoTrack;
+}
+
+RCT_EXPORT_METHOD(getDisplayMedia:(RCTPromiseResolveBlock)resolve
+                         rejecter:(RCTPromiseRejectBlock)reject) {
+    RTCVideoTrack *videoTrack = [self createScreenCaptureVideoTrack];
+
+    if (videoTrack == nil) {
+        reject(@"DOMException", @"AbortError", nil);
+        return;
+    }
+
+    NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
+    RTCMediaStream *mediaStream
+      = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+    [mediaStream addVideoTrack:videoTrack];
+
+    NSString *trackId = videoTrack.trackId;
+    self.localTracks[trackId] = videoTrack;
+
+    NSDictionary *trackInfo = @{
+                                @"enabled": @(videoTrack.isEnabled),
+                                @"id": videoTrack.trackId,
+                                @"kind": videoTrack.kind,
+                                @"label": videoTrack.trackId,
+                                @"readyState": @"live",
+                                @"remote": @(NO)
+                                };
+
+    self.localStreams[mediaStreamId] = mediaStream;
+    resolve(@{ @"streamId": mediaStreamId, @"track": trackInfo });
+}
+
+/**
+  * Implements {@code getUserMedia}. Note that at this point constraints have
+  * been normalized and permissions have been granted. The constraints only
+  * contain keys for which permissions have already been granted, that is,
+  * if audio permission was not granted, there will be no "audio" key in
+  * the constraints dictionary.
+  */
 RCT_EXPORT_METHOD(getUserMedia:(NSDictionary *)constraints
                successCallback:(RCTResponseSenderBlock)successCallback
                  errorCallback:(RCTResponseSenderBlock)errorCallback) {
@@ -82,219 +136,179 @@ RCT_EXPORT_METHOD(getUserMedia:(NSDictionary *)constraints
   RTCMediaStream *mediaStream
     = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
 
-  [self
-    getUserMedia:constraints
-    successCallback:^ (RTCMediaStream *mediaStream) {
-      NSString *mediaStreamId = mediaStream.streamId;
-      NSMutableArray *tracks = [NSMutableArray array];
-
-      for (NSString *propertyName in @[ @"audioTracks", @"videoTracks" ]) {
-        SEL sel = NSSelectorFromString(propertyName);
-        for (RTCMediaStreamTrack *track in [mediaStream performSelector:sel]) {
-          NSString *trackId = track.trackId;
-
-          self.localTracks[trackId] = track;
-          [tracks addObject:@{
-                              @"enabled": @(track.isEnabled),
-                              @"id": trackId,
-                              @"kind": track.kind,
-                              @"label": trackId,
-                              @"readyState": @"live",
-                              @"remote": @(NO)
-                              }];
-        }
-      }
-      self.localStreams[mediaStreamId] = mediaStream;
-      successCallback(@[ mediaStreamId, tracks ]);
-    }
-    errorCallback:^ (NSString *errorType, NSString *errorMessage) {
-      errorCallback(@[ errorType, errorMessage ]);
-    }
-    mediaStream:mediaStream];
-}
-
-/**
- * Initializes a new {@link RTCAudioTrack} or a new {@link RTCVideoTrack} which
- * satisfies specific constraints and adds it to a specific
- * {@link RTCMediaStream} if the specified {@code mediaStream} contains no track
- * of the respective media type and the specified {@code constraints} specify
- * that a track of the respective media type is required; otherwise, reports
- * success for the specified {@code mediaStream} to a specific
- * {@link NavigatorUserMediaSuccessCallback}. In other words, implements a media
- * type-specific iteration of or successfully concludes the
- * {@code getUserMedia()} algorithm. The method will be recursively invoked to
- * conclude the whole {@code getUserMedia()} algorithm either with (successful)
- * satisfaction of the specified {@code constraints} or with failure.
- *
- * @param constraints The {@code MediaStreamConstraints} which specifies the
- * requested media types and which the new {@code RTCAudioTrack} or
- * {@code RTCVideoTrack} instance is to satisfy.
- * @param successCallback The {@link NavigatorUserMediaSuccessCallback} to which
- * success is to be reported.
- * @param errorCallback The {@link NavigatorUserMediaErrorCallback} to which
- * failure is to be reported.
- * @param mediaStream The {@link RTCMediaStream} which is being initialized as
- * part of the execution of the {@code getUserMedia()} algorithm.
- */
-- (void)getUserMedia:(NSDictionary *)constraints
-     successCallback:(NavigatorUserMediaSuccessCallback)successCallback
-       errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream *)mediaStream {
-  // If mediaStream contains no audioTracks and the constraints request such a
-  // track, then run an iteration of the getUserMedia() algorithm to obtain
-  // local audio content. 
-  if (mediaStream.audioTracks.count == 0) {
-    // constraints.audio
-    id audioConstraints = constraints[@"audio"];
-    if (audioConstraints && [audioConstraints boolValue]) {
-      [self requestAccessForMediaType:AVMediaTypeAudio
-                          constraints:constraints
-                      successCallback:successCallback
-                        errorCallback:errorCallback
-                          mediaStream:mediaStream];
-      return;
-    }
+  if (constraints[@"audio"]) {
+      audioTrack = [self createAudioTrack:constraints];
+  }
+  if (constraints[@"video"]) {
+      videoTrack = [self createVideoTrack:constraints];
   }
 
-  // If mediaStream contains no videoTracks and the constraints request such a
-  // track, then run an iteration of the getUserMedia() algorithm to obtain
-  // local video content.
-  if (mediaStream.videoTracks.count == 0) {
-    // constraints.video
-    id videoConstraints = constraints[@"video"];
-    if (videoConstraints) {
-      BOOL requestAccessForVideo
-        = [videoConstraints isKindOfClass:[NSNumber class]]
-          ? [videoConstraints boolValue]
-          : [videoConstraints isKindOfClass:[NSDictionary class]];
-
-      if (requestAccessForVideo) {
-        [self requestAccessForMediaType:AVMediaTypeVideo
-                            constraints:constraints
-                        successCallback:successCallback
-                          errorCallback:errorCallback
-                            mediaStream:mediaStream];
-        return;
-      }
-    }
+  if (audioTrack == nil && videoTrack == nil) {
+    // Fail with DOMException with name AbortError as per:
+    // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
+    errorCallback(@[ @"DOMException", @"AbortError" ]);
+    return;
   }
 
-  // There are audioTracks and/or videoTracks in mediaStream as requested by
-  // constraints so the getUserMedia() is to conclude with success.
-  successCallback(mediaStream);
-}
+  NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
+  RTCMediaStream *mediaStream
+    = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+  NSMutableArray *tracks = [NSMutableArray array];
+  NSMutableArray *tmp = [NSMutableArray array];
+  if (audioTrack)
+      [tmp addObject:audioTrack];
+  if (videoTrack)
+      [tmp addObject:videoTrack];
 
-/**
- * Initializes a new {@link RTCVideoTrack} which satisfies specific constraints,
- * adds it to a specific {@link RTCMediaStream}, and reports success to a
- * specific callback. Implements the video-specific counterpart of the
- * {@code getUserMedia()} algorithm.
- *
- * @param constraints The {@code MediaStreamConstraints} which the new
- * {@code RTCVideoTrack} instance is to satisfy.
- * @param successCallback The {@link NavigatorUserMediaSuccessCallback} to which
- * success is to be reported.
- * @param errorCallback The {@link NavigatorUserMediaErrorCallback} to which
- * failure is to be reported.
- * @param mediaStream The {@link RTCMediaStream} which is being initialized as
- * part of the execution of the {@code getUserMedia()} algorithm, to which a
- * new {@code RTCVideoTrack} is to be added, and which is to be reported to
- * {@code successCallback} upon success.
- */
-- (void)getUserVideo:(NSDictionary *)constraints
-     successCallback:(NavigatorUserMediaSuccessCallback)successCallback
-       errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream *)mediaStream {
-  id videoConstraints = constraints[@"video"];
-  if (![videoConstraints isKindOfClass:[NSDictionary class]]) {
-      videoConstraints = @{};
+  for (RTCMediaStreamTrack *track in tmp) {
+    if ([track.kind isEqualToString:@"audio"]) {
+      [mediaStream addAudioTrack:(RTCAudioTrack *)track];
+    } else if([track.kind isEqualToString:@"video"]) {
+      [mediaStream addVideoTrack:(RTCVideoTrack *)track];
+    }
+
+    NSString *trackId = track.trackId;
+
+    self.localTracks[trackId] = track;
+    
+    NSDictionary *settings = @{};
+    if ([track.kind isEqualToString:@"video"]) {
+        RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
+        VideoCaptureController *vcc = (VideoCaptureController *)videoTrack.captureController;
+        AVCaptureDeviceFormat *format = vcc.selectedFormat;
+        CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+        settings = @{
+            @"height": @(dimensions.height),
+            @"width": @(dimensions.width),
+            @"frameRate": @(3)
+        };
+    }
+
+    [tracks addObject:@{
+                        @"enabled": @(track.isEnabled),
+                        @"id": trackId,
+                        @"kind": track.kind,
+                        @"label": trackId,
+                        @"readyState": @"live",
+                        @"remote": @(NO),
+                        @"settings": settings
+                        }];
+
+
   }
 
   RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
 
-  NSString *trackUUID = [[NSUUID UUID] UUIDString];
-  RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackUUID];
+#pragma mark - Other stream related APIs
 
-#if !TARGET_IPHONE_SIMULATOR
-  RTCCameraVideoCapturer *videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
-  VideoCaptureController *videoCaptureController
-        = [[VideoCaptureController alloc] initWithCapturer:videoCapturer
-                                            andConstraints:videoConstraints];
-  videoTrack.videoCaptureController = videoCaptureController;
-  [videoCaptureController startCapture];
-#endif
+RCT_EXPORT_METHOD(enumerateDevices:(RCTResponseSenderBlock)callback)
+{
+    NSMutableArray *devices = [NSMutableArray array];
+    AVCaptureDeviceDiscoverySession *videoevicesSession
+        = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:@[ AVCaptureDeviceTypeBuiltInWideAngleCamera ]
+                                                                 mediaType:AVMediaTypeVideo
+                                                                  position:AVCaptureDevicePositionUnspecified];
+    for (AVCaptureDevice *device in videoevicesSession.devices) {
+        NSString *position = @"unknown";
+        if (device.position == AVCaptureDevicePositionBack) {
+            position = @"environment";
+        } else if (device.position == AVCaptureDevicePositionFront) {
+            position = @"front";
+        }
+        NSString *label = @"Unknown video device";
+        if (device.localizedName != nil) {
+            label = device.localizedName;
+        }
+        [devices addObject:@{
+                             @"facing": position,
+                             @"deviceId": device.uniqueID,
+                             @"groupId": @"",
+                             @"label": label,
+                             @"kind": @"videoinput",
+                             }];
+    }
+    AVCaptureDeviceDiscoverySession *audioDevicesSession
+        = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:@[ AVCaptureDeviceTypeBuiltInMicrophone ]
+                                                                 mediaType:AVMediaTypeAudio
+                                                                  position:AVCaptureDevicePositionUnspecified];
+    for (AVCaptureDevice *device in audioDevicesSession.devices) {
+        NSString *label = @"Unknown audio device";
+        if (device.localizedName != nil) {
+            label = device.localizedName;
+        }
+        [devices addObject:@{
+                             @"deviceId": device.uniqueID,
+                             @"groupId": @"",
+                             @"label": label,
+                             @"kind": @"audioinput",
+                             }];
+    }
+    callback(@[devices]);
+}
 
-  [mediaStream addVideoTrack:videoTrack];
+RCT_EXPORT_METHOD(mediaStreamCreate:(nonnull NSString *)streamID)
+{
+    RTCMediaStream *mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:streamID];
+    self.localStreams[streamID] = mediaStream;
+}
 
-  successCallback(mediaStream);
+RCT_EXPORT_METHOD(mediaStreamAddTrack:(nonnull NSString *)streamID : (nonnull NSString *)trackID)
+{
+    RTCMediaStream *mediaStream = self.localStreams[streamID];
+    RTCMediaStreamTrack *track = [self trackForId:trackID];
+
+    if (mediaStream && track) {
+        if ([track.kind isEqualToString:@"audio"]) {
+            [mediaStream addAudioTrack:(RTCAudioTrack *)track];
+        } else if([track.kind isEqualToString:@"video"]) {
+            [mediaStream addVideoTrack:(RTCVideoTrack *)track];
+        }
+    }
+}
+
+RCT_EXPORT_METHOD(mediaStreamRemoveTrack:(nonnull NSString *)streamID : (nonnull NSString *)trackID)
+{
+    RTCMediaStream *mediaStream = self.localStreams[streamID];
+    RTCMediaStreamTrack *track = [self trackForId:trackID];
+
+    if (mediaStream && track) {
+        if ([track.kind isEqualToString:@"audio"]) {
+            [mediaStream removeAudioTrack:(RTCAudioTrack *)track];
+        } else if([track.kind isEqualToString:@"video"]) {
+            [mediaStream removeVideoTrack:(RTCVideoTrack *)track];
+        }
+    }
 }
 
 RCT_EXPORT_METHOD(mediaStreamRelease:(nonnull NSString *)streamID)
 {
   RTCMediaStream *stream = self.localStreams[streamID];
   if (stream) {
-    for (RTCVideoTrack *track in stream.videoTracks) {
-      [track.videoCaptureController stopCapture];
-      [self.localTracks removeObjectForKey:track.trackId];
-    }
-    for (RTCAudioTrack *track in stream.audioTracks) {
-      [self.localTracks removeObjectForKey:track.trackId];
-    }
     [self.localStreams removeObjectForKey:streamID];
   }
 }
 
-RCT_EXPORT_METHOD(mediaStreamTrackGetSources:(RCTResponseSenderBlock)callback) {
-  NSMutableArray *sources = [NSMutableArray array];
-  NSArray *videoDevices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
-  for (AVCaptureDevice *device in videoDevices) {
-    [sources addObject:@{
-                         @"facing": device.positionString,
-                         @"id": device.uniqueID,
-                         @"label": device.localizedName,
-                         @"kind": @"video",
-                         }];
-  }
-  NSArray *audioDevices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeAudio];
-  for (AVCaptureDevice *device in audioDevices) {
-    [sources addObject:@{
-                         @"facing": @"",
-                         @"id": device.uniqueID,
-                         @"label": device.localizedName,
-                         @"kind": @"audio",
-                         }];
-  }
-  callback(@[sources]);
-}
-
-RCT_EXPORT_METHOD(mediaStreamTrackRelease:(nonnull NSString *)streamID : (nonnull NSString *)trackID)
+RCT_EXPORT_METHOD(mediaStreamTrackRelease:(nonnull NSString *)trackID)
 {
-  // what's different to mediaStreamTrackStop? only call mediaStream explicitly?
-  RTCMediaStream *mediaStream = self.localStreams[streamID];
-  RTCMediaStreamTrack *track = self.localTracks[trackID];
-  if (mediaStream && track) {
-    track.isEnabled = NO;
-    [track.videoCaptureController stopCapture];
-    // FIXME this is called when track is removed from the MediaStream,
-    // but it doesn't mean it can not be added back using MediaStream.addTrack
-    [self.localTracks removeObjectForKey:trackID];
-    if ([track.kind isEqualToString:@"audio"]) {
-      [mediaStream removeAudioTrack:(RTCAudioTrack *)track];
-    } else if([track.kind isEqualToString:@"video"]) {
-      [mediaStream removeVideoTrack:(RTCVideoTrack *)track];
+    RTCMediaStreamTrack *track = self.localTracks[trackID];
+    if (track) {
+        track.isEnabled = NO;
+        [track.captureController stopCapture];
+        [self.localTracks removeObjectForKey:trackID];
     }
-  }
 }
 
 RCT_EXPORT_METHOD(mediaStreamTrackSetEnabled:(nonnull NSString *)trackID : (BOOL)enabled)
 {
-  RTCMediaStreamTrack *track = self.localTracks[trackID];
-  if (track && track.isEnabled != enabled) {
+  RTCMediaStreamTrack *track = [self trackForId:trackID];
+  if (track) {
     track.isEnabled = enabled;
-    if (enabled) {
-      [track.videoCaptureController startCapture];
-    } else {
-      [track.videoCaptureController stopCapture];
+    if (track.captureController) {  // It could be a remote track!
+      if (enabled) {
+        [track.captureController startCapture];
+      } else {
+        [track.captureController stopCapture];
+      }
     }
   }
 }
@@ -304,18 +318,25 @@ RCT_EXPORT_METHOD(mediaStreamTrackSwitchCamera:(nonnull NSString *)trackID)
   RTCMediaStreamTrack *track = self.localTracks[trackID];
   if (track) {
     RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
-    [videoTrack.videoCaptureController switchCamera];
+    [(VideoCaptureController *)videoTrack.captureController switchCamera];
   }
 }
 
-RCT_EXPORT_METHOD(mediaStreamTrackStop:(nonnull NSString *)trackID)
+#pragma mark - Helpers
+
+- (RTCMediaStreamTrack*)trackForId:(NSString*)trackId
 {
-  RTCMediaStreamTrack *track = self.localTracks[trackID];
-  if (track) {
-    track.isEnabled = NO;
-    [track.videoCaptureController stopCapture];
-    [self.localTracks removeObjectForKey:trackID];
+  RTCMediaStreamTrack *track = self.localTracks[trackId];
+  if (!track) {
+    for (NSNumber *peerConnectionId in self.peerConnections) {
+      RTCPeerConnection *peerConnection = self.peerConnections[peerConnectionId];
+      track = peerConnection.remoteTracks[trackId];
+      if (track) {
+        break;
+      }
+    }
   }
+  return track;
 }
 
 /**

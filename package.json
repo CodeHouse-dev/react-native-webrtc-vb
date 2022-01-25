@@ -1,46 +1,14 @@
 {
-  "_args": [
-    [
-      "react-native-webrtc@1.67.1",
-      "/Users/mac/projects/rulet/ChatRouletkaMobile"
-    ]
-  ],
-  "_from": "react-native-webrtc@1.67.1",
-  "_id": "react-native-webrtc@1.67.1",
-  "_inBundle": false,
-  "_integrity": "sha512-B61khaSiGx4wnGbPjghAo78Fvuzxnycfz1lXnQI8OLMhuaIrvgAQpH/9wBdg46HXX2d8lnwWo/A13o3ff+b4/g==",
-  "_location": "/react-native-webrtc",
-  "_phantomChildren": {},
-  "_requested": {
-    "type": "version",
-    "registry": true,
-    "raw": "react-native-webrtc@1.67.1",
-    "name": "react-native-webrtc",
-    "escapedName": "react-native-webrtc",
-    "rawSpec": "1.67.1",
-    "saveSpec": null,
-    "fetchSpec": "1.67.1"
+  "name": "react-native-webrtc",
+  "version": "1.94.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/react-native-webrtc/react-native-webrtc.git"
   },
-  "_requiredBy": [
-    "/"
-  ],
-  "_resolved": "https://registry.npmjs.org/react-native-webrtc/-/react-native-webrtc-1.67.1.tgz",
-  "_spec": "1.67.1",
-  "_where": "/Users/mac/projects/rulet/ChatRouletkaMobile",
-  "author": {
-    "name": "Oney",
-    "email": "appdevoney@gmail.com"
-  },
-  "bugs": {
-    "url": "https://github.com/oney/react-native-webrtc/issues"
-  },
-  "dependencies": {
-    "base64-js": "^1.1.2",
-    "event-target-shim": "^1.0.5",
-    "prop-types": "^15.5.10"
-  },
+  "nativePackage": true,
   "description": "WebRTC for React Native",
-  "homepage": "https://github.com/oney/react-native-webrtc",
+  "license": "MIT",
+  "homepage": "https://github.com/react-native-webrtc/react-native-webrtc",
   "keywords": [
     "react-component",
     "react-native",
@@ -48,14 +16,33 @@
     "android",
     "webrtc"
   ],
-  "name": "react-native-webrtc",
-  "nativePackage": true,
+  "main": "src/index.js",
+  "dependencies": {
+    "base64-js": "1.5.1",
+    "event-target-shim": "6.0.2",
+    "tar": "6.1.11"
+  },
   "peerDependencies": {
-    "react-native": ">=0.40.0"
+    "react-native": ">=0.60.0"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/oney/react-native-webrtc.git"
+  "scripts": {
+    "postinstall": "node tools/downloadWebRTC.js",
+    "prepare": "husky install"
   },
-  "version": "1.67.1"
+  "bugs": {
+    "url": "https://github.com/react-native-webrtc/react-native-webrtc/issues"
+  },
+  "devDependencies": {
+    "husky": "7.0.2",
+    "lint-staged": "11.2.3",
+    "prettier": "2.4.1"
+  },
+  "lint-staged": {
+    "**/*": "prettier --write --ignore-unknown"
+  },
+  "webrtc-builds": {
+    "android": "https://github.com/jitsi/webrtc/releases/download/v94.0.0/android-webrtc.tgz",
+    "ios": "https://github.com/jitsi/webrtc/releases/download/v94.0.0/WebRTC.xcframework.tgz",
+    "ios-bitcode": "https://github.com/jitsi/webrtc/releases/download/v94.0.0/WebRTC.xcframework-bitcode.tgz"
+  }
 }

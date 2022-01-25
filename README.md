@@ -4,19 +4,12 @@
 [![npm downloads](https://img.shields.io/npm/dm/react-native-webrtc.svg?maxAge=2592000)](https://img.shields.io/npm/dm/react-native-webrtc.svg?maxAge=2592000)
 
 A WebRTC module for React Native.
-- Support iOS / Android.  
+- Support iOS / macOS / Android.
 - Support Video / Audio / Data Channels.
 
-## WebRTC Revision
+> 🚨 Expo: This package is not available in the [Expo Go](https://expo.dev/client) app. Learn how you can use this package in [Custom Dev Clients](https://docs.expo.dev/development/getting-started/) via the out-of-tree [Expo Config Plugin](https://github.com/expo/config-plugins/tree/master/packages/react-native-webrtc).
 
-| react-native-webrtc | WebRTC Version | arch(ios) | arch(android)  | npm published | note | additional picks |
-| :-------------: | :-------------:| :-----: | :-----: | :-----: | :-----: | :-----: |
-| 0.54.7 | [M54](https://chromium.googlesource.com/external/webrtc/+/branch-heads/54)<br>(13869)<br>(+6-14091) | x86_64<br>i386<br>armv7<br>arm64 | armeabi-v7a<br>x86 | :heavy_check_mark: | RN < 40 | |
-| 1.57.1 | [M57](https://chromium.googlesource.com/external/webrtc/+/branch-heads/57)<br>(16123)<br>(+7-16178) | x86_64<br>i386<br>armv7<br>arm64 | armeabi-v7a<br>x86 | :heavy_check_mark: | |* [16805](https://chromium.googlesource.com/external/webrtc/+/0e22a4cfd3790d80ad1ae699891341fe322cb418)<br>* [16462](https://chromium.googlesource.com/external/webrtc.git/+/1634e160426df926e14cf9f1e5346d2a1dc9c909)  |
-| 1.58.3 | [M58](https://chromium.googlesource.com/external/webrtc/+/branch-heads/58)<br>[commit](https://chromium.googlesource.com/external/webrtc/+/6504196a312da382d75c5ff577d10207793f2907)<br>(16937)<br>(+21-18206) | x86_64<br>i386<br>armv7<br>arm64 | armeabi-v7a<br>x86 | :heavy_check_mark: | :sparkles: Promise Support :sparkles: | * [17065](https://chromium.googlesource.com/external/webrtc/+/d1587ad244af3388c1282a715cdf05032ba0c2fc)<br>* [17925](https://chromium.googlesource.com/external/webrtc/+/f68426954154918ec5bf7e6b3096fa3d7acb0944)<br>* [18140](https://chromium.googlesource.com/external/webrtc/+/7daab660ce0e35fecad717fefab4cf935d3c253e)<br>* [18277](https://chromium.googlesource.com/external/webrtc/+/eae4564cb7dea3ad9f5963814e82fd823267ff89) |
-| 1.63.0 | [M63](https://chromium.googlesource.com/external/webrtc/+/branch-heads/63)<br>[commit](https://chromium.googlesource.com/external/webrtc/+/dc5904661c4c8b357e19595d80b2881db3f4a71b)<br>(20237)<br>(+14-21432) | x86_64<br>i386<br>armv7<br>arm64 | armeabi-v7a<br>x86 | :heavy_check_mark: |  | * [20611](https://chromium.googlesource.com/external/webrtc/+/7281f92e7210fb48f8b34c1bbb8f037808a73868)<br>* [21519](https://chromium.googlesource.com/external/webrtc/+/730add8e2c8b033eae0cf3589be14d0afc4acdd3) |
-| 1.67.1 | [M67](https://chromium.googlesource.com/external/webrtc/+/branch-heads/67)<br>[commit](https://chromium.googlesource.com/external/webrtc/+/89c6af1578dd6ed086fd144fdd19ae5fa7183435)<br>(22779)<br>(+28-23167) | x86_64<br>i386<br>armv7<br>arm64 | armeabi-v7a<br>x86 | :heavy_check_mark: |  |  |
-| master | [M67](https://chromium.googlesource.com/external/webrtc/+/branch-heads/67)<br>[commit](https://chromium.googlesource.com/external/webrtc/+/89c6af1578dd6ed086fd144fdd19ae5fa7183435)<br>(22779)<br>(+28-23167) | x86_64<br>i386<br>armv7<br>arm64 | armeabi-v7a<br>x86 | :warning: | test me plz |  |
+## Community
 
 Since `0.53`, we use same branch version number like in webrtc native.
 please see [wiki page](https://github.com/oney/react-native-webrtc/wiki) about revision history 
@@ -25,11 +18,11 @@ please see [wiki page](https://github.com/oney/react-native-webrtc/wiki) about r
 
 `${branch_name} stable (${branched_from_revision})(+${Cherry-Picks-Num}-${Last-Cherry-Picks-Revision})`
 
-* the webrtc revision in brackets is extracting frrom `Cr-Branched-From` instead `Cr-Commit-Position`  
-* the number follows with `+` is the additional amount of cherry-picks since `Branched-From` revision.
-
-### note:
-the order of commit revision is nothing to do with the order of cherry-picks, for example, the earlier committed `cherry-pick-#2` may have higher revision than `cherry-pick-#3` and vice versa.
+* Currently used revision: [M94](https://github.com/jitsi/webrtc/releases/tag/v94.0.0)
+* Supported architectures
+  * Android: armeabi-v7a, arm64-v8a, x86, x86_64
+  * iOS: arm64, x86_64 (for bitcode support, run [this script](https://github.com/react-native-webrtc/react-native-webrtc/blob/master/tools/downloadBitcode.sh))
+  * macOS: x86_64
 
 ## Installation
 
@@ -48,8 +41,9 @@ var {
   RTCView,
   MediaStream,
   MediaStreamTrack,
-  getUserMedia,
-} = WebRTC;
+  mediaDevices,
+  registerGlobals
+} from 'react-native-webrtc';
 ```
 Anything about using RTCPeerConnection, RTCSessionDescription and RTCIceCandidate is like browser.  
 Support most WebRTC APIs, please see the [Document](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection).
@@ -63,20 +57,18 @@ MediaStreamTrack.getSources(sourceInfos => {
   let videoSourceId;
   for (const i = 0; i < sourceInfos.length; i++) {
     const sourceInfo = sourceInfos[i];
-    if(sourceInfo.kind == "video" && sourceInfo.facing == (isFront ? "front" : "back")) {
-      videoSourceId = sourceInfo.id;
+    if(sourceInfo.kind == "videoinput" && sourceInfo.facing == (isFront ? "front" : "environment")) {
+      videoSourceId = sourceInfo.deviceId;
     }
   }
   getUserMedia({
     audio: true,
     video: {
-      mandatory: {
-        minWidth: 500, // Provide your own width, height and frame rate here
-        minHeight: 300,
-        minFrameRate: 30
-      },
+      width: 640,
+      height: 480,
+      frameRate: 30,
       facingMode: (isFront ? "user" : "environment"),
-      optional: (videoSourceId ? [{sourceId: videoSourceId}] : [])
+      deviceId: videoSourceId
     }
   }, function (stream) {
     console.log('dddd', stream);
@@ -125,6 +117,22 @@ container.setState({videoURL: stream.toURL()});
 
 ### Custom APIs
 
+#### registerGlobals()
+
+By calling this method the JavaScript global namespace gets "polluted" with the following additions:
+
+* `navigator.mediaDevices.getUserMedia()`
+* `navigator.mediaDevices.getDisplayMedia()`
+* `navigator.mediaDevices.enumerateDevices()`
+* `window.RTCPeerConnection`
+* `window.RTCIceCandidate`
+* `window.RTCSessionDescription`
+* `window.MediaStream`
+* `window.MediaStreamTrack`
+
+This is useful to make existing WebRTC JavaScript libraries (that expect those globals to exist) work with react-native-webrtc.
+
+
 #### MediaStreamTrack.prototype._switchCamera()
 
 This function allows to switch the front / back cameras in a video track
@@ -138,23 +146,12 @@ it back to `true` will re-enable the camera.
 
 ## Demos
 
-**Official Demo**
+The [react-native-webrtc](https://github.com/react-native-webrtc) organization provides a number of packages which are useful when developing Real Time Communications applications.
 
-author: [@oney](https://github.com/oney)
+The [react-native-webrtc-web-shim](https://github.com/react-native-webrtc/react-native-webrtc-web-shim) project provides a shim for react-native-web support, allowing you to use [(almost)](https://github.com/react-native-webrtc/react-native-webrtc-web-shim/tree/main#setup) the same code in react-native-web as in react-native.
 
-The demo project is https://github.com/oney/RCTWebRTCDemo   
-And you will need a signaling server. I have written a signaling server https://react-native-webrtc.herokuapp.com/ (the repository is https://github.com/oney/react-native-webrtc-server).   
-You can open this website in browser, and then set it as signaling server in the app, and run the app. After you enter the same room ID, the video stream will be connected.
+## Acknowledgements
 
-**Demo by Folks**
+Thanks to all [contributors](https://github.com/react-native-webrtc/react-native-webrtc/graphs/contributors) for helping with the project!
 
-author: [@thoqbk](https://github.com/thoqbk)
-- Signaling server and web app: https://rewebrtc.herokuapp.com/ (the repository is https://github.com/thoqbk/rewebrtc-server)
-- React native app repository: https://github.com/thoqbk/rewebrtc
-
-## Native control
-Use [react-native-incall-manager](https://github.com/zxcpoiu/react-native-incall-manager) to keep screen on, mute microphone, etc.
-
-## Sponsorship
-This repository doesn't have a plan to get sponsorship.(This can be discussed afterwards by collaborators). If you would like to pay bounty to fix some bugs or get some features, be free to open a issue that adds `[BOUNTY]` category in title. Add other bounty website link like [this](https://www.bountysource.com) will be better.
-
+Special thanks to [Wan Huang Yang](https://github.com/oney/) for creating the first version of this package.
