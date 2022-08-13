@@ -35,9 +35,9 @@
         self.width = [constraints[@"width"] intValue];
         self.height = [constraints[@"height"] intValue];
         self.frameRate = [constraints[@"frameRate"] intValue];
-        if(constraints[@"vb"]) {
+        // if(constraints[@"vb"]) {
             self.vb = YES;
-        }
+        // }
 
         id facingMode = constraints[@"facingMode"];
 
@@ -101,7 +101,7 @@
     
     __weak VideoCaptureController *weakSelf = self;
     
-    if (self.vb) {
+    // if (self.vb) {
         // Selfie Segmentator library requires kCVPixelFormatType_32BGRA format
         for (AVCaptureOutput *output in _capturer.captureSession.outputs) {
             RCTLog(@"Changing capturer output to %@", ((AVCaptureVideoDataOutput*)output).videoSettings);
@@ -109,7 +109,7 @@
                 ((AVCaptureVideoDataOutput*)output).videoSettings = @{(NSString *)kCVPixelBufferPixelFormatTypeKey: [NSNumber numberWithUnsignedInt:kCVPixelFormatType_32BGRA]};
             }
         }
-    }
+    // }
     
     [self.capturer startCaptureWithDevice:self.device format:format fps:self.frameRate completionHandler:^(NSError *err) {
         if (err) {

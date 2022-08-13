@@ -49,13 +49,13 @@
   RTCCameraVideoCapturer *videoCapturer;
   
   // If virtual backround is enabled, use video source interceptor before video source
-  if (videoContraints[@"vb"]) {
+  // if (videoContraints[@"vb"]) {
       self.videoSourceInterceptor = [[VideoSourceInterceptor alloc]initWithVideoSource:videoSource];
       videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:self.videoSourceInterceptor];
-  }
-  else {
-      videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
-  }
+  // }
+  // else {
+  //     videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
+  // }
   VideoCaptureController *videoCaptureController
         = [[VideoCaptureController alloc] initWithCapturer:videoCapturer
                                             andConstraints:videoContraints];
