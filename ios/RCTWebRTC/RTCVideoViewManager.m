@@ -359,6 +359,7 @@ typedef NS_ENUM(NSInteger, RTCVideoViewObjectFit) {
     }
 }
 
+/**
  * Sets the size of the video frame to render.
  *
  * @param size The size of the video frame to render.
