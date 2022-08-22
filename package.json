@@ -58,7 +58,7 @@
   },
   "webrtc-builds": {
     "android": "https://github.com/jitsi/webrtc/releases/download/v100.0.0/android-webrtc.tgz",
-    "ios": "https://github.com/jitsi/webrtc/releases/download/v100.0.0/WebRTC.xcframework.tgz",
-    "ios-bitcode": "https://github.com/jitsi/webrtc/releases/download/v100.0.0/WebRTC.xcframework-bitcode.tgz"
+    "ios": "https://github.com/CodeHouse-dev/react-native-webrtc-vb/releases/download/1.100.1.1/WebRTC.xcframework.tgz",
+    "ios-bitcode": "https://github.com/CodeHouse-dev/react-native-webrtc-vb/releases/download/1.100.1.1/WebRTC.xcframework-bitcode.tgz"
   }
 }
